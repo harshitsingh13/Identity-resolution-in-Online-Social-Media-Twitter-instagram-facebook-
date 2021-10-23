@@ -1,0 +1,400 @@
+#############section-3#####################
+import csv
+import matplotlib.pyplot as plt
+import nltk
+import numpy as np
+import seaborn as sns
+#from jaccard import distance
+rows=[]
+data=[]
+twt=[]
+face=[]
+inst=[]
+name=[]
+
+#Algorithm is taken from https://stackoverflow.com/questions/46975929/how-can-i-calculate-the-jaccard-similarity-of-two-lists-containing-strings-in-py
+#Jaccard similarity between two string
+
+def jaccard_similarity(list1, list2):
+    s1 = set(list1)
+    s2 = set(list2)
+    return float(len(s1.intersection(s2)) / len(s1.union(s2)))
+
+############Algorithm ends here##############
+
+#algorithm is taken from https://www.nltk.org/_modules/nltk/metrics/distance.html
+#Jaro similarity between two strings
+
+def jaro_similarity(s1, s2):
+    # First, store the length of the strings
+    # because they will be re-used several times.
+    len_s1, len_s2 = len(s1), len(s2)
+
+    # The upper bound of the distance for being a matched character.
+    match_bound = max(len_s1, len_s2) // 2 - 1
+
+    # Initialize the counts for matches and transpositions.
+    matches = 0  # no.of matched characters in s1 and s2
+    transpositions = 0  # no. of transpositions between s1 and s2
+    flagged_1 = []  # positions in s1 which are matches to some character in s2
+    flagged_2 = []  # positions in s2 which are matches to some character in s1
+
+    # Iterate through sequences, check for matches and compute transpositions.
+    for i in range(len_s1):  # Iterate through each character.
+        upperbound = min(i + match_bound, len_s2 - 1)
+        lowerbound = max(0, i - match_bound)
+        for j in range(lowerbound, upperbound + 1):
+            if s1[i] == s2[j] and j not in flagged_2:
+                matches += 1
+                flagged_1.append(i)
+                flagged_2.append(j)
+                break
+    flagged_2.sort()
+    for i, j in zip(flagged_1, flagged_2):
+        if s1[i] != s2[j]:
+            transpositions += 1
+
+    if matches == 0:
+        return 0
+    else:
+        return (
+            1
+            / 3
+            * (
+                matches / len_s1
+                + matches / len_s2
+                + (matches - transpositions // 2) / matches
+            )
+        )
+###########################################
+############Algorithm ends here##############
+
+#Algorithm is taken from https://www.nltk.org/_modules/nltk/metrics/distance.html
+#Jaro Winkler Similarity between two strings
+
+def jaro_winkler_similarity(s1, s2, p=0.1, max_l=4):
+    """
+    The Jaro Winkler distance is an extension of the Jaro similarity in:
+
+        William E. Winkler. 1990. String Comparator Metrics and Enhanced
+        Decision Rules in the Fellegi-Sunter Model of Record Linkage.
+        Proceedings of the Section on Survey Research Methods.
+        American Statistical Association: 354-359.
+    such that:
+
+        jaro_winkler_sim = jaro_sim + ( l * p * (1 - jaro_sim) )
+
+    where,
+
+        - jaro_sim is the output from the Jaro Similarity,
+        see jaro_similarity()
+        - l is the length of common prefix at the start of the string
+            - this implementation provides an upperbound for the l value
+              to keep the prefixes.A common value of this upperbound is 4.
+        - p is the constant scaling factor to overweigh common prefixes.
+          The Jaro-Winkler similarity will fall within the [0, 1] bound,
+          given that max(p)<=0.25 , default is p=0.1 in Winkler (1990)
+
+
+    Test using outputs from https://www.census.gov/srd/papers/pdf/rr93-8.pdf
+    from "Table 5 Comparison of String Comparators Rescaled between 0 and 1"
+
+    >>> winkler_examples = [("billy", "billy"), ("billy", "bill"), ("billy", "blily"),
+    ... ("massie", "massey"), ("yvette", "yevett"), ("billy", "bolly"), ("dwayne", "duane"),
+    ... ("dixon", "dickson"), ("billy", "susan")]
+
+    >>> winkler_scores = [1.000, 0.967, 0.947, 0.944, 0.911, 0.893, 0.858, 0.853, 0.000]
+    >>> jaro_scores =    [1.000, 0.933, 0.933, 0.889, 0.889, 0.867, 0.822, 0.790, 0.000]
+
+        # One way to match the values on the Winkler's paper is to provide a different
+    # p scaling factor for different pairs of strings, e.g.
+    >>> p_factors = [0.1, 0.125, 0.20, 0.125, 0.20, 0.20, 0.20, 0.15, 0.1]
+
+    >>> for (s1, s2), jscore, wscore, p in zip(winkler_examples, jaro_scores, winkler_scores, p_factors):
+    ...     assert round(jaro_similarity(s1, s2), 3) == jscore
+    ...     assert round(jaro_winkler_similarity(s1, s2, p=p), 3) == wscore
+
+
+    Test using outputs from https://www.census.gov/srd/papers/pdf/rr94-5.pdf from
+    "Table 2.1. Comparison of String Comparators Using Last Names, First Names, and Street Names"
+
+    >>> winkler_examples = [('SHACKLEFORD', 'SHACKELFORD'), ('DUNNINGHAM', 'CUNNIGHAM'),
+    ... ('NICHLESON', 'NICHULSON'), ('JONES', 'JOHNSON'), ('MASSEY', 'MASSIE'),
+    ... ('ABROMS', 'ABRAMS'), ('HARDIN', 'MARTINEZ'), ('ITMAN', 'SMITH'),
+    ... ('JERALDINE', 'GERALDINE'), ('MARHTA', 'MARTHA'), ('MICHELLE', 'MICHAEL'),
+    ... ('JULIES', 'JULIUS'), ('TANYA', 'TONYA'), ('DWAYNE', 'DUANE'), ('SEAN', 'SUSAN'),
+    ... ('JON', 'JOHN'), ('JON', 'JAN'), ('BROOKHAVEN', 'BRROKHAVEN'),
+    ... ('BROOK HALLOW', 'BROOK HLLW'), ('DECATUR', 'DECATIR'), ('FITZRUREITER', 'FITZENREITER'),
+    ... ('HIGBEE', 'HIGHEE'), ('HIGBEE', 'HIGVEE'), ('LACURA', 'LOCURA'), ('IOWA', 'IONA'), ('1ST', 'IST')]
+
+    >>> jaro_scores =   [0.970, 0.896, 0.926, 0.790, 0.889, 0.889, 0.722, 0.467, 0.926,
+    ... 0.944, 0.869, 0.889, 0.867, 0.822, 0.783, 0.917, 0.000, 0.933, 0.944, 0.905,
+    ... 0.856, 0.889, 0.889, 0.889, 0.833, 0.000]
+
+    >>> winkler_scores = [0.982, 0.896, 0.956, 0.832, 0.944, 0.922, 0.722, 0.467, 0.926,
+    ... 0.961, 0.921, 0.933, 0.880, 0.858, 0.805, 0.933, 0.000, 0.947, 0.967, 0.943,
+    ... 0.913, 0.922, 0.922, 0.900, 0.867, 0.000]
+
+        # One way to match the values on the Winkler's paper is to provide a different
+    # p scaling factor for different pairs of strings, e.g.
+    >>> p_factors = [0.1, 0.1, 0.1, 0.1, 0.125, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.20,
+    ... 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+
+
+    >>> for (s1, s2), jscore, wscore, p in zip(winkler_examples, jaro_scores, winkler_scores, p_factors):
+    ...     if (s1, s2) in [('JON', 'JAN'), ('1ST', 'IST')]:
+    ...         continue  # Skip bad examples from the paper.
+    ...     assert round(jaro_similarity(s1, s2), 3) == jscore
+    ...     assert round(jaro_winkler_similarity(s1, s2, p=p), 3) == wscore
+
+
+
+    This test-case proves that the output of Jaro-Winkler similarity depends on
+    the product  l * p and not on the product max_l * p. Here the product max_l * p > 1
+    however the product l * p <= 1
+
+    >>> round(jaro_winkler_similarity('TANYA', 'TONYA', p=0.1, max_l=100), 3)
+    0.88
+
+
+    """
+    # To ensure that the output of the Jaro-Winkler's similarity
+    # falls between [0,1], the product of l * p needs to be
+    # also fall between [0,1].
+    if not 0 <= max_l * p <= 1:
+        warnings.warn(
+            str(
+                "The product  `max_l * p` might not fall between [0,1]."
+                "Jaro-Winkler similarity might not be between 0 and 1."
+            )
+        )
+
+    # Compute the Jaro similarity
+    jaro_sim = jaro_similarity(s1, s2)
+
+    # Initialize the upper bound for the no. of prefixes.
+    # if user did not pre-define the upperbound,
+    # use shorter length between s1 and s2
+
+    # Compute the prefix matches.
+    l = 0
+    # zip() will automatically loop until the end of shorter string.
+    for s1_i, s2_i in zip(s1, s2):
+        if s1_i == s2_i:
+            l += 1
+        else:
+            break
+        if l == max_l:
+            break
+    # Return the similarity value as described in docstring.
+    return jaro_sim + (l * p * (1 - jaro_sim))
+
+############Algorithm ends here##############
+
+##################################################################
+
+with open('/content/drive/My Drive/IdentityResolution.csv', 'r') as file:
+    reader = csv.reader(file)
+    
+    for row in reader:
+      data.append(row)
+      #print(row[3])
+      name.append(row[0])
+      #print(row[3].rsplit('/',1)[1])
+      #print(row[1])
+      #print(row[1].rsplit('/',1)[1])
+      twt.append(row[1].rsplit('com/',1)[1])
+      #print(row[2])
+      #print(row[2].rsplit('/',1)[1])
+      face.append(row[2].rsplit('com/',1)[1])
+      #print(row[3])
+      #print(row[3].rsplit('com/',1)[1])
+      inst.append(row[3].rsplit('com/',1)[1])
+      rows.append(row)
+disttf=[]
+distfi=[]
+distti=[]
+simtf=[]
+simfi=[]
+simti=[]
+jsimtf=[]
+jsimfi=[]
+jsimti=[]
+jasimtf=[]
+jasimfi=[]
+jasimti=[]
+for i in range(0,len(twt)):
+    dist1=nltk.jaccard_distance(set(twt[i]), set(face[i]))
+    dist2=nltk.jaccard_distance(set(face[i]), set(inst[i]))
+    dist3=nltk.jaccard_distance(set(twt[i]), set(inst[i]))
+    disttf.append(dist1)
+    distfi.append(dist2)
+    distti.append(dist3)
+
+    #jaccard similarity
+    simtf.append(jaccard_similarity(twt[i],face[i]))
+    simfi.append(jaccard_similarity(face[i],inst[i]))
+    simti.append(jaccard_similarity(twt[i],inst[i]))
+
+    #jaro similarity
+    jsimtf.append(jaro_similarity(twt[i],face[i]))
+    jsimfi.append(jaro_similarity(face[i],inst[i]))
+    jsimti.append(jaro_similarity(twt[i],inst[i]))
+
+    #Jaro winkler similarity
+    jasimtf.append(jaro_winkler_similarity(twt[i],face[i]))
+    jasimfi.append(jaro_winkler_similarity(face[i],inst[i]))
+    jasimti.append(jaro_winkler_similarity(twt[i],inst[i]))
+
+print('usernames of twitter, facebook, instagram respectively')
+print(twt)
+print(face)
+print(inst)
+#here I use three distance metrics in which jaro similarity is best to use
+print(disttf)
+print('\ntwitter-facebook similarity by jaccard distance metrics')
+print(simtf)
+print('\ntwitter-facebook similarity by jaro distance metrics')
+print(jsimtf)
+print('\ntwitter-facebook similarity by jaro winkler distance metrics')
+print(jasimtf)
+print('\nfacebook-instagram similarity by jaccard distance metrics')
+print(simfi)
+print('\nfacebook-instagram similarity by jaro distance metrics')
+print(jsimfi)
+print('\nfacebook-instagram similarity by jaro winkler metrics')
+print(jasimfi)
+print('\ntwitter-instagram similarity by jaccard distance metrics')
+print(simti)
+print('\ntwitter-instagram similarity by jaro distance metrics')
+print(jsimti)
+print('\ntwitter-instagram similarity by jaro winkler distance metrics')
+print(jasimti)
+###############################
+print('\nmean of jaccard, jaro, jaro winkler distance metrics respectively for twitter-facebook similarity')
+print(sum(simtf)/len(simtf),sum(jsimtf)/len(jsimtf),sum(jasimtf)/len(jasimtf))
+print('\nmean of jaccard, jaro, jaro winkler distance metrics respectively for facebook-instagram similarity')
+print(sum(simfi)/len(simfi),sum(jsimfi)/len(jsimfi),sum(jasimfi)/len(jasimfi))
+print('\nmean of jaccard, jaro, jaro winkler distance metrics respectively for twitter-instagram similarity')
+print(sum(simti)/len(simti),sum(jsimti)/len(jsimti),sum(jasimti)/len(jasimti))
+
+#print(mean)
+n1=[]
+n2=[]
+n3=[]
+n4=[]
+n5=[]
+n6=[]
+n7=[]
+n8=[]
+n9=[]
+#print(len(simtf),len(jsimtf),len(jasimtf),len(simfi),len(jsimfi),len(jasimfi),len(simti),len(jsimti),len(jasimti))
+#distribution plotting
+for i in range(0,len(twt)):
+    if simtf[i] not in n1:
+        n1.append(simtf[i])
+    if jsimtf[i] not in n2:
+        n2.append(jsimtf[i])
+    if jasimtf[i] not in n3:
+        n3.append(jasimtf[i])
+    if simfi[i] not in n4:
+        n4.append(simfi[i])
+    if jsimfi[i] not in n5:
+        n5.append(jsimfi[i])
+    if jasimfi[i] not in n6:
+        n6.append(jasimfi[i])
+    if simti[i] not in n7:
+        n7.append(simti[i])
+    if jsimti[i] not in n8:
+        n8.append(jsimti[i])
+    if jasimti[i] not in n9:
+        n9.append(jasimti[i])
+#print(len(n1),len(n2),len(n3),len(n4),len(n5),len(n6),len(n7),len(n8),len(n9))
+#for counting frequencies
+n1.sort()
+n2.sort()
+n3.sort()
+n4.sort()
+n5.sort()
+n6.sort()
+n7.sort()
+n8.sort()
+n9.sort()
+c1=[]
+c2=[]
+c3=[]
+c4=[]
+c5=[]
+c6=[]
+c7=[]
+c8=[]
+c9=[]
+
+for i in range(0,len(n1)):
+  c1.append(simtf.count(n1[i]))
+for i in range(0,len(n2)):
+  c2.append(jsimtf.count(n2[i]))
+for i in range(0,len(n3)):
+  c3.append(jasimtf.count(n3[i]))
+for i in range(0,len(n4)):
+  c4.append(simfi.count(n4[i]))
+for i in range(0,len(n5)):
+  c5.append(jsimfi.count(n5[i]))
+for i in range(0,len(n6)):
+  c6.append(jasimfi.count(n6[i]))
+for i in range(0,len(n7)):
+  c7.append(simti.count(n7[i]))
+for i in range(0,len(n8)):
+  c8.append(jsimti.count(n8[i]))
+for i in range(0,len(n9)):
+  c9.append(jasimti.count(n9[i]))
+
+
+print('\nHere I use three distance metrics: jaccard distance metrics, jaro distance metrics, jaro winkler distance metrics')
+print('\nOut of these three distance metrics the mean of jaro winkler distance metrics is high among all three conditions, so it is best to use')
+#sns.distplot(simtf, label='twitter-facebook', hist=False)
+plt.plot(n1,c1)
+plt.title('twitter-facebook similarity by jaccard distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n2,c2)
+plt.title('twitter-facebook similarity by jaro distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n3,c3)
+plt.title('twitter-facebook similarity by jaro winkler distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n4,c4)
+plt.title('facebook-instagram similarity by jaccard distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n5,c5)
+plt.title('facebook-instagram similarity by jaro distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n6,c6)
+plt.title('facebook-instagram similarity by jaro winkler distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n7,c7)
+plt.title('twitter-instagram similarity by jaccard distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n8,c8)
+plt.title('twitter-instagram similarity by jaro distance metrics')
+plt.xlabel('similarity distribution')
+plt.ylabel('no. of users')
+plt.show()
+plt.plot(n9,c9)
+plt.xlabel('similarity distribution')
+plt.title('twitter-instagram similarity by jaro winkler distance metrics')
+plt.ylabel('no. of users')
+plt.show()
